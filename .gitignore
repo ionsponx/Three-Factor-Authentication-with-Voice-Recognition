@@ -1,0 +1,28 @@
+# Ignore email credentials file
+email.env
+
+# Ignore Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore virtual environment files
+venv/
+env/
+
+# Ignore log files
+Users_login_time.csv
+
+# Ignore user-generated or temporary files
+*.log
+*.tmp
+*.bak
+
+# Ignore IDE-specific files (e.g., VS Code)
+.vscode/
+*.code-workspace
+
+# Ignore OS-generated files
+.DS_Store  # macOS
+Thumbs.db  # Windows

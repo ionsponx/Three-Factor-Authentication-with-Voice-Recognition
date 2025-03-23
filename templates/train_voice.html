@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Train Voice</title>
+    <link rel="stylesheet" href="https://unicons.iconscout.com/release/v4.0.0/css/line.css">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.1/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-nav">
+    <nav class="navbar">
+        <a href="" class="navbar-brand text-light">Voice Training</a>
+    </nav>
+    <div class="container">
+        <div class="row">
+            <div class="col-md-7">
+                <h1 class="text-light display-4 mt-100" style="font-size:65px">Set up your voice authentication.</h1>
+            </div>
+            <div class="col-md-5">
+                <div class="card mt-100">
+                    <div class="card-body">
+                        <h2 class="text-secondary" style="font-family:emoji; font-size:22px"><strong>Voice Training (Step {{ step }} of {{ total_steps }})</strong></h2>
+                        <p>Say a unique phrase (e.g., 'I am [Your Name]') for at least 5 seconds.</p>
+                        <form id="voiceForm" method="POST" action="/train_voice">
+                            <input type="hidden" name="email" value="{{ email }}">
+                            <input type="hidden" name="audio_data" id="audioData">
+                            <button type="button" id="startRecording" class="w-100 btn btn-lg btn-primary">Start Recording</button>
+                            <input type="submit" class="w-100 btn btn-lg btn-success mt-2" value="Submit Voice" style="display:none;" id="submitVoice">
+                        </form>
+                        <p id="status" style="color:green;"></p>
+                        {% if error %}
+                            <p style="color:red">{{ error }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let startTime;
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+
+        const startRecordingButton = document.getElementById('startRecording');
+        const submitVoiceButton = document.getElementById('submitVoice');
+        const status = document.getElementById('status');
+        const voiceForm = document.getElementById('voiceForm');
+
+        startRecordingButton.addEventListener('click', async () => {
+            if (!isRecording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                    audioChunks = [];
+
+                    mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+                    mediaRecorder.onstop = () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const reader = new FileReader();
+                        reader.readAsDataURL(audioBlob);
+                        reader.onloadend = () => {
+                            document.getElementById('audioData').value = reader.result;
+                            status.textContent = 'Recording complete. Please submit.';
+                            submitVoiceButton.style.display = 'block';
+                        };
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+
+                    startTime = performance.now();
+                    mediaRecorder.start();
+                    isRecording = true;
+                    startRecordingButton.textContent = 'Recording...';
+                    startRecordingButton.disabled = true;
+                    status.textContent = 'Recording for at least 5 seconds...';
+
+                    setTimeout(() => {
+                        if (isRecording) {
+                            mediaRecorder.stop();
+                            isRecording = false;
+                            startRecordingButton.textContent = 'Start Recording';
+                            startRecordingButton.disabled = false;
+                        }
+                    }, 5500);
+                } catch (error) {
+                    console.error('Error accessing microphone:', error);
+                    status.textContent = 'Failed to access microphone. Check permissions.';
+                }
+            }
+        });
+
+        voiceForm.addEventListener('submit', (event) => {
+            const audioData = document.getElementById('audioData').value;
+            if (!audioData) {
+                event.preventDefault();
+                status.textContent = 'Please record at least 5 seconds of audio.';
+            }
+        });
+    </script>
+</body>
+</html>

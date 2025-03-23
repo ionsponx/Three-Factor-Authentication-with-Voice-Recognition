@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Personal Page</title>
+    <link rel="stylesheet" href="https://unicons.iconscout.com/release/v4.0.0/css/line.css">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.1/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-nav">
+    <nav class="navbar">
+        <a href="" class="navbar-brand text-light">Account Details</a>
+    </nav>
+    <div class="container">
+        <div class="row">
+            <div class="col-md-8">
+                <h1 class="text-light display-4 mt-100" style="font-size:89px">Welcome, <br> Here Your Account Details.</h1>
+            </div>
+            <div class="col-md-4">
+                <div class="card mt-100 input-field">
+                    <div class="card-body">
+                        <form style="font-family:emoji; font-size:18px">
+                            <label><strong>Account Details:</strong></label>
+                            <p>Account Number: {{ account_number }}<br>
+                            User Type: {{ user_type }}</p>
+                            <a href="/"><input type="button" class="w-100 btn btn-lg btn-primary" value="Log out"></a>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

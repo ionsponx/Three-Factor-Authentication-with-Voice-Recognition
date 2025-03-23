@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Voice Verification</title>
+    <link rel="stylesheet" href="https://unicons.iconscout.com/release/v4.0.0/css/line.css">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-iYQeCzEYFbKjA/T2uDLTpkwGzCiq6soy8tYaI1GyVh/UjpbCx/TYkiZhlZB6+fzT" crossorigin="anonymous">
+</head>
+<body class="bg-nav">
+    <nav class="navbar">
+        <a href="" class="navbar-brand text-light">Voice Verification</a>
+    </nav>
+    <div class="container">
+        <div class="row">
+            <div class="col-md-7">
+                <h1 class="text-light display-4 mt-100" style="font-size:65px">Privacy is not something that I'm merely entitled to, it's an absolute prerequisite.<br>- Marlon Brando</h1>
+            </div>
+            <div class="col-md-5">
+                <div class="card mt-100">
+                    <div class="card-body">
+                        <h2 class="text-secondary" style="font-family:emoji; font-size:22px"><strong>Step 3: Voice Verification</strong></h2>
+                        <p>Say your authentication phrase (e.g., 'I am Ian Richard') for {{ email }}.</p>
+                        <form id="voiceForm" method="POST" action="/verify_voice">
+                            <input type="hidden" name="email" value="{{ email }}">
+                            <input type="hidden" name="audio_data" id="audioData">
+                            <button type="button" id="startRecording" class="w-100 btn btn-lg btn-primary">Start Recording</button>
+                            <input type="submit" class="w-100 btn btn-lg btn-success mt-2" value="Submit Voice" style="display:none;" id="submitVoice">
+                        </form>
+                        <p id="status" style="color:green;"></p>
+                        {% if error %}
+                            <p style="color:red">{{ error }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.1/dist/js/bootstrap.bundle.min.js" integrity="sha384-u1OknCvxWvY5kfmNBILK2hRnQC3Pr17a+RTT6rIHI7NnikvbZlHgTPOOmMi466C8" crossorigin="anonymous"></script>
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                console.log("MediaRecorder initialized with mimeType:", mediaRecorder.mimeType);
+
+                mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+                    console.log("Recorded blob type:", audioBlob.type, "Size:", audioBlob.size, "Duration (approx):", audioBlob.size / 16000, "seconds"); // Rough estimate
+                    const reader = new FileReader();
+                    reader.readAsDataURL(audioBlob);
+                    reader.onloadend = () => {
+                        document.getElementById('audioData').value = reader.result;
+                        status.textContent = 'Recording complete. Please submit.';
+                        document.getElementById('submitVoice').style.display = 'block';
+                        console.log("Audio data set:", reader.result.substring(0, 100) + "...");
+                    };
+                };
+
+                mediaRecorder.start();
+                status.textContent = 'Recording...';
+                document.getElementById('startRecording').style.display = 'none';
+            } catch (error) {
+                console.error("Error accessing microphone:", error);
+                status.textContent = 'Error accessing microphone. Please check permissions.';
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            }
+        }
+
+        document.getElementById('startRecording').addEventListener('click', startRecording);
+        document.getElementById('submitVoice').addEventListener('click', () => {
+            stopRecording();
+            console.log("Submitting audio data:", document.getElementById('audioData').value.substring(0, 100) + "...");
+            document.getElementById('voiceForm').submit();
+        });
+    </script>
+</body>
+</html>
