@@ -22,6 +22,11 @@
                     <div class="card-body">
                         <h2 class="text-secondary" style="font-family:emoji; font-size:22px"><strong>Step 2: OTP Verification</strong></h2>
                         <p>Enter the 6-digit OTP sent to {{ email }}.</p>
+                        {% if dev_otp %}
+                            <div class="alert alert-info" role="alert">
+                                Local dev OTP: <strong>{{ dev_otp }}</strong>
+                            </div>
+                        {% endif %}
                         <form method="POST" action="/verify_otp">
                             <input type="hidden" name="email" value="{{ email }}">
                             <input type="text" name="otp" class="form-control" placeholder="Enter OTP" required>

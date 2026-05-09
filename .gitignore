@@ -1,6 +1,12 @@
 # Ignore email credentials file
 email.env
 
+# Ignore local database files and keep only instance/.gitkeep
+instance/*.db
+instance/*.sqlite
+instance/*.sqlite3
+!instance/.gitkeep
+
 # Ignore Python compiled files
 __pycache__/
 *.pyc
@@ -10,12 +16,18 @@ __pycache__/
 # Ignore virtual environment files
 venv/
 env/
+.venv/
+.python/
+.tools/
+pretrained_models/
+*.zip
 
 # Ignore log files
 Users_login_time.csv
 
 # Ignore user-generated or temporary files
 *.log
+*.pid
 *.tmp
 *.bak
 

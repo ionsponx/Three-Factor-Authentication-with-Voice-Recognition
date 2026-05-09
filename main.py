@@ -6,6 +6,8 @@ import re
 import logging
 import pickle
 import random
+import shutil
+import subprocess
 
 from flask import Flask, request, render_template, session, redirect, url_for, flash, Response
 from flask_sqlalchemy import SQLAlchemy
@@ -18,13 +20,15 @@ import smtplib
 import librosa
 import numpy as np
 from speechbrain.inference import EncoderClassifier
+from speechbrain.utils.fetching import LocalStrategy
+from speechbrain.utils.parameter_transfer import Pretrainer
 from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
 import noisereduce as nr
 import torch
 from sklearn.preprocessing import normalize
 
-# Load environment variables from email.env
+# Load environment variables from email.env when it exists.
 load_dotenv('email.env')
 
 # Initialize Flask app
@@ -32,7 +36,7 @@ app = Flask(__name__, template_folder='templates')
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "default_secret_key")
 
 # Database configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "sqlite:///site.db")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize database and migration
@@ -79,12 +83,69 @@ logger = logging.getLogger(__name__)
 # Email configuration
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
+ENABLE_EMAIL_DELIVERY = os.getenv("ENABLE_EMAIL_DELIVERY", "false").lower() in {"1", "true", "yes", "on"}
+SPEECHBRAIN_MODEL_SOURCE = os.getenv("SPEECHBRAIN_MODEL_SOURCE", "speechbrain/spkrec-ecapa-voxceleb")
+SPEECHBRAIN_MODEL_DIR = os.getenv("SPEECHBRAIN_MODEL_DIR", "pretrained_models/spkrec-ecapa-voxceleb")
 
-# Load pre-trained speaker recognition model
-classifier = EncoderClassifier.from_hparams(source="speechbrain/spkrec-ecapa-voxceleb")
+classifier = None
+
+
+def force_speechbrain_copy_strategy():
+    """Avoid SpeechBrain symlinks, which fail on normal Windows accounts."""
+    if getattr(Pretrainer.collect_files, "_uses_copy_strategy", False):
+        return
+
+    original_collect_files = Pretrainer.collect_files
+
+    def collect_files_with_copy(self, *args, **kwargs):
+        kwargs.setdefault("local_strategy", LocalStrategy.COPY)
+        return original_collect_files(self, *args, **kwargs)
+
+    collect_files_with_copy._uses_copy_strategy = True
+    Pretrainer.collect_files = collect_files_with_copy
+
+
+def get_classifier():
+    """Load the speaker recognition model only when voice auth needs it."""
+    global classifier
+    if classifier is None:
+        force_speechbrain_copy_strategy()
+        logger.info("Loading SpeechBrain speaker recognition model...")
+        classifier = EncoderClassifier.from_hparams(
+            source=SPEECHBRAIN_MODEL_SOURCE,
+            savedir=SPEECHBRAIN_MODEL_DIR,
+            local_strategy=LocalStrategy.COPY,
+        )
+    return classifier
+
+
+def local_dev_otp_enabled():
+    """Allow the app to run locally without Gmail SMTP credentials."""
+    return not ENABLE_EMAIL_DELIVERY
+
+
+def get_ffmpeg_path():
+    """Find ffmpeg from PATH or from the imageio-ffmpeg Python package."""
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        return ffmpeg_path
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
 
 def send_email_otp(email, otp):
     """Send an OTP to the user's email."""
+    if local_dev_otp_enabled():
+        logger.warning("Local dev OTP for %s: %s", email, otp)
+        return True
+    if not SENDER_EMAIL or not SENDER_PASSWORD:
+        logger.error("Email delivery is enabled, but SENDER_EMAIL or SENDER_PASSWORD is missing.")
+        return False
+
     message = MIMEMultipart("alternative")
     message["Subject"] = "Your OTP Code for 3FA"
     message["From"] = SENDER_EMAIL
@@ -108,12 +169,25 @@ def load_audio(audio_data):
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
             tmp.write(audio_data)
             tmp_filename = tmp.name
+        converted_filename = None
         try:
-            y, sr = librosa.load(tmp_filename, sr=16000)
+            audio_path = tmp_filename
+            ffmpeg_path = get_ffmpeg_path()
+            if ffmpeg_path:
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as converted:
+                    converted_filename = converted.name
+                subprocess.run(
+                    [ffmpeg_path, "-y", "-loglevel", "error", "-i", tmp_filename, "-ar", "16000", "-ac", "1", converted_filename],
+                    check=True,
+                )
+                audio_path = converted_filename
+            y, sr = librosa.load(audio_path, sr=16000)
             logger.debug(f"Loaded audio from temporary file. Audio shape: {y.shape}, sr={sr}")
             return y
         finally:
             os.remove(tmp_filename)
+            if converted_filename and os.path.exists(converted_filename):
+                os.remove(converted_filename)
     except Exception as e:
         logger.error(f"Error loading audio: {e}")
         raise e
@@ -122,7 +196,10 @@ def extract_features(audio_data):
     """Extract MFCC features and waveform from audio bytes."""
     y = load_audio(audio_data)
     y = nr.reduce_noise(y=y, sr=16000)
-    y = y / np.max(np.abs(y))
+    max_amplitude = np.max(np.abs(y)) if len(y) else 0
+    if max_amplitude == 0:
+        raise ValueError("Audio is silent. Please record again.")
+    y = y / max_amplitude
     y, _ = librosa.effects.trim(y, top_db=20)
     if len(y) < 16000 * 3:
         logger.warning(f"Trimmed audio too short: {len(y)} samples. Consider re-recording.")
@@ -152,7 +229,7 @@ def train_voice_template(email, all_audio_data):
         features, y = extract_features(audio_data)
         all_features.append(features)
         waveform = torch.from_numpy(y).unsqueeze(0).float()
-        embedding = classifier.encode_batch(waveform).squeeze().cpu().numpy()
+        embedding = get_classifier().encode_batch(waveform).squeeze().cpu().numpy()
         all_embeddings.append(embedding)
     mean_embedding = np.mean(all_embeddings, axis=0)
     mean_embedding = normalize(mean_embedding.reshape(1, -1)).flatten()
@@ -189,7 +266,7 @@ def verify_voice(email, audio_data):
 
     features, y = extract_features(audio_data)
     waveform = torch.from_numpy(y).unsqueeze(0).float()
-    new_embedding = classifier.encode_batch(waveform).squeeze().cpu().numpy()
+    new_embedding = get_classifier().encode_batch(waveform).squeeze().cpu().numpy()
     new_embedding = normalize(new_embedding.reshape(1, -1)).flatten()
     similarity = np.dot(new_embedding, stored_embedding)
     logger.debug(f"Similarity score for {email}: {similarity}")
@@ -272,10 +349,13 @@ def train_voice():
                     raise ValueError("Invalid audio data format.")
                 base64_string = audio_data.split(',')[1]
                 audio_bytes = base64.b64decode(base64_string)
+                audio_paths = session.get('audio_paths', [])
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as tmp:
                     tmp.write(audio_bytes)
-                    session['audio_paths'].append(tmp.name)
+                    audio_paths.append(tmp.name)
+                session['audio_paths'] = audio_paths
                 session['train_step'] = session.get('train_step', 1) + 1
+                session.modified = True
                 if session['train_step'] > 10:
                     all_audio_data = [open(path, 'rb').read() for path in session['audio_paths']]
                     train_voice_template(email, all_audio_data)
@@ -286,8 +366,8 @@ def train_voice():
                     db.session.commit()
                     for path in session['audio_paths']:
                         os.remove(path)
-                    session.pop('train_step')
-                    session.pop('audio_paths')
+                    session.pop('train_step', None)
+                    session.pop('audio_paths', None)
                     return redirect(url_for('login'))
                 return render_template('train_voice.html', email=email, step=session['train_step'], total_steps=10)
             except Exception as e:
@@ -306,7 +386,8 @@ def login():
             session['otp'] = otp
             session['email'] = email
             if send_email_otp(email, otp):
-                return render_template('second.html', email=email)
+                dev_otp = otp if local_dev_otp_enabled() else None
+                return render_template('second.html', email=email, dev_otp=dev_otp)
             return render_template('login.html', error="Failed to send OTP")
         return render_template('login.html', error="Invalid credentials")
     return render_template('login.html')
