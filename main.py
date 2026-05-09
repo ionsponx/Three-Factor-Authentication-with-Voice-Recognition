@@ -439,8 +439,13 @@ def delete_user():
     user_id = request.form.get('user_id')
     if not user_id:
         return "No user specified", 400
-    user = User.query.filter_by(id=user_id).first()
+    try:
+        user_id = int(user_id)
+    except ValueError:
+        return "Invalid user specified", 400
+    user = db.session.get(User, user_id)
     if user:
+        AudioRecording.query.filter_by(user_id=user.id).delete(synchronize_session=False)
         db.session.delete(user)
         db.session.commit()
         return redirect(url_for('list_users'))

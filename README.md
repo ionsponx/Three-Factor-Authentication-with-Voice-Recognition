@@ -102,7 +102,7 @@ http://127.0.0.1:5000/admin/users
 On that page:
 
 - `Voice Trained` shows whether a user has saved voice authentication data.
-- `Stored Voice Recordings` links to that user's saved training recordings.
+- `Stored Voice Recordings` includes a `Play Recording` button and browser audio controls for each saved training recording.
 - `Delete` removes the user. The app is configured to delete that user's stored voice recordings at the same time.
 
 To reset everything locally, stop the Flask app and delete:
