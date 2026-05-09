@@ -13,6 +13,8 @@
         <tr>
           <th>ID</th>
           <th>Email</th>
+          <th>Voice Trained</th>
+          <th>Stored Voice Recordings</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -21,6 +23,16 @@
           <tr>
             <td>{{ user.id }}</td>
             <td>{{ user.email }}</td>
+            <td>{{ 'Yes' if user.speaker_embedding and user.training_mfccs else 'No' }}</td>
+            <td>
+              {% if user.audio_recordings %}
+                {% for recording in user.audio_recordings %}
+                  <a href="{{ url_for('serve_audio', recording_id=recording.id) }}" target="_blank">Recording {{ loop.index }}</a>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              {% else %}
+                None
+              {% endif %}
+            </td>
             <td>
               <form method="POST" action="{{ url_for('delete_user') }}" onsubmit="return confirm('Are you sure you want to delete this user?');">
                 <input type="hidden" name="user_id" value="{{ user.id }}">

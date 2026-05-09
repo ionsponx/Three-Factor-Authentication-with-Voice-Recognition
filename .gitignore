@@ -30,6 +30,8 @@ Users_login_time.csv
 *.pid
 *.tmp
 *.bak
+*.webm
+voice_templates/
 
 # Ignore IDE-specific files (e.g., VS Code)
 .vscode/
